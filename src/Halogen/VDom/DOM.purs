@@ -13,11 +13,16 @@ import Prelude
 
 import Data.Array as Array
 import Data.Function.Uncurried as Fn
+import Data.List (List)
+import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Nullable (toNullable)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
+import Effect (Effect)
 import Effect.Uncurried as EFn
 import Foreign.Object as Object
+import Halogen.VDom.Hydrate (ElementOrTextNode)
 import Halogen.VDom.Hydrate as Hydrate
 import Halogen.VDom.Machine (Machine, Step, Step'(..), extract, halt, mkStep, step, unStep)
 import Halogen.VDom.Machine as Machine
@@ -28,6 +33,8 @@ import Web.DOM.Document (Document) as DOM
 import Web.DOM.Element (Element) as DOM
 import Web.DOM.Element as DOMElement
 import Web.DOM.Node (Node) as DOM
+import Web.DOM.Node as DOM.Node
+import Web.DOM.NodeList as DOM.NodeList
 
 type VDomMachine a w = Machine (VDom a w) DOM.Node
 
@@ -40,6 +47,8 @@ type VDomBuilder i a w = EFn.EffectFn3 (VDomSpec a w) (VDomMachine a w) i (VDomS
 type VDomHydrator i a w = EFn.EffectFn5 DOM.Node (VDomHydrationSpec a w) (DOM.Node -> VDomMachine a w) (VDomMachine a w) i (VDomStep a w)
 
 type VDomBuilder4 i j k l a w = EFn.EffectFn6 (VDomSpec a w) (VDomMachine a w) i j k l (VDomStep a w)
+
+type VDomHydrator4 i j k l a w = EFn.EffectFn8 DOM.Node (VDomHydrationSpec a w) (DOM.Node -> VDomMachine a w) (VDomMachine a w) i j k l (VDomStep a w)
 
 -- | Widget machines recursively reference the configured spec to potentially
 -- | enable recursive trees of Widgets.
@@ -102,7 +111,7 @@ hydrateVDom hydrationSpec@(VDomHydrationSpec { vdomSpec }) = hydrate
   hydrate currentNode = EFn.mkEffectFn1 \vdom ->
     case vdom of
       Text s -> EFn.runEffectFn5 hydrateText currentNode hydrationSpec hydrate build s
-      Elem _ _ _ _ -> unsafeCoerce unit
+      Elem ns n a ch -> EFn.runEffectFn8 hydrateElem currentNode hydrationSpec hydrate build ns n a ch
       Keyed _ _ _ _ -> unsafeCoerce unit
       Widget _ -> unsafeCoerce unit
       Grafted _ -> unsafeCoerce unit
@@ -178,6 +187,54 @@ buildElem = EFn.mkEffectFn6 \(VDomSpec spec) build ns1 name1 as1 ch1 → do
       , children
       }
   pure $ mkStep $ Step node state patchElem haltElem
+
+hydrateElem :: forall a w. VDomHydrator4 (Maybe Namespace) ElemName a (Array (VDom a w)) a w
+hydrateElem = EFn.mkEffectFn8 \currentNode (VDomHydrationSpec { vdomSpec: VDomSpec { document }, hydrateAttributes }) hydrate build ns1 name1 as1 ch1 -> do
+  currentElement <- Hydrate.checkIsElementNode currentNode
+  Hydrate.checkTagNameIsEqualTo ns1 name1 currentElement
+
+  currentElementChildren <- do
+    nodeList <- DOM.Node.childNodes currentNode
+    nodeArray <- DOM.NodeList.toArray nodeList
+    pure $ Hydrate.listToElementOrTextNode $ List.fromFoldable nodeArray
+
+  let 
+    toOutput :: ElementOrTextNode -> VDom a w -> { node :: DOM.Node, vdom :: VDom a w }
+    toOutput node vdom = { node: Hydrate.elementOrTextNodeToNode node, vdom }
+
+    extractVdom :: VDom a w -> VDom a w
+    extractVdom = identity
+
+    vdomChildren :: List (VDom a w)
+    vdomChildren = List.fromFoldable ch1
+
+  zippedChildren <- 
+    EFn.runEffectFn6 Hydrate.zipChildrenAndSplitTextNodes 
+      toOutput 
+      extractVdom 
+      document 
+      currentNode 
+      currentElementChildren 
+      vdomChildren
+
+  let
+    onChild :: { node :: DOM.Node, vdom :: VDom a w } -> Effect (Step (VDom a w) DOM.Node)
+    onChild { node, vdom } = EFn.runEffectFn1 (hydrate node) vdom
+
+  children <- traverse onChild $ Array.fromFoldable zippedChildren
+  attrs <- EFn.runEffectFn1 (hydrateAttributes currentElement) as1
+
+  let 
+    state = 
+      { build
+      , node: currentNode
+      , attrs
+      , ns: ns1
+      , name: name1
+      , children
+      }
+
+  pure $ mkStep $ Step currentNode state patchElem haltElem
 
 patchElem ∷ ∀ a w. EFn.EffectFn2 (ElemState a w) (VDom a w) (VDomStep a w)
 patchElem = EFn.mkEffectFn2 \state vdom → do
