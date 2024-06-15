@@ -18,6 +18,7 @@ import Data.Nullable (toNullable)
 import Data.Tuple (Tuple(..), fst)
 import Effect.Uncurried as EFn
 import Foreign.Object as Object
+import Halogen.VDom.Hydrate as Hydrate
 import Halogen.VDom.Machine (Machine, Step, Step'(..), extract, halt, mkStep, step, unStep)
 import Halogen.VDom.Machine as Machine
 import Halogen.VDom.Types (ElemName(..), Namespace(..), VDom(..), runGraft)
@@ -35,6 +36,8 @@ type VDomStep a w = Step (VDom a w) DOM.Node
 type VDomInit i a w = EFn.EffectFn1 i (VDomStep a w)
 
 type VDomBuilder i a w = EFn.EffectFn3 (VDomSpec a w) (VDomMachine a w) i (VDomStep a w)
+
+type VDomHydrator i a w = EFn.EffectFn5 DOM.Node (VDomHydrationSpec a w) (DOM.Node -> VDomMachine a w) (VDomMachine a w) i (VDomStep a w)
 
 type VDomBuilder4 i j k l a w = EFn.EffectFn6 (VDomSpec a w) (VDomMachine a w) i j k l (VDomStep a w)
 
@@ -90,12 +93,15 @@ buildVDom spec = build
 -- |   ...
 -- | ```
 hydrateVDom ∷ ∀ a w. VDomHydrationSpec a w → DOM.Node → VDomMachine a w
-hydrateVDom _ = hydrate 
+hydrateVDom hydrationSpec@(VDomHydrationSpec { vdomSpec }) = hydrate 
   where
+  build :: VDomMachine a w
+  build = buildVDom vdomSpec
+
   hydrate :: DOM.Node -> VDomMachine a w
-  hydrate _ = EFn.mkEffectFn1 \vdom ->
+  hydrate currentNode = EFn.mkEffectFn1 \vdom ->
     case vdom of
-      Text _ -> unsafeCoerce unit
+      Text s -> EFn.runEffectFn5 hydrateText currentNode hydrationSpec hydrate build s
       Elem _ _ _ _ -> unsafeCoerce unit
       Keyed _ _ _ _ -> unsafeCoerce unit
       Widget _ -> unsafeCoerce unit
@@ -112,6 +118,13 @@ buildText = EFn.mkEffectFn3 \(VDomSpec spec) build s → do
   node ← EFn.runEffectFn2 Util.createTextNode s spec.document
   let state = { build, node, value: s }
   pure $ mkStep $ Step node state patchText haltText
+
+hydrateText :: forall a w. VDomHydrator String a w
+hydrateText = EFn.mkEffectFn5 \currentNode _ _ build s -> do
+  currentText <- Hydrate.checkIsTextNode currentNode
+  Hydrate.checkTextContentIsEqTo s currentText
+  let state = { build, node: currentNode, value: s }
+  pure $ mkStep $ Step currentNode state patchText haltText
 
 patchText ∷ ∀ a w. EFn.EffectFn2 (TextState a w) (VDom a w) (VDomStep a w)
 patchText = EFn.mkEffectFn2 \state vdom → do
