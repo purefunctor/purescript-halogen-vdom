@@ -4,9 +4,11 @@ import Prelude
 
 import Data.Function.Uncurried as Fn
 import Data.Maybe (Maybe(..))
-import Data.Nullable (null, toNullable)
+import Data.Nullable (null, toMaybe, toNullable)
+import Data.String as String
 import Data.Tuple (Tuple(..), fst, snd)
 import Effect (Effect)
+import Effect.Exception as EEx
 import Effect.Ref as Ref
 import Effect.Uncurried as EFn
 import Foreign (typeOf)
@@ -14,8 +16,10 @@ import Foreign.Object (Object)
 import Foreign.Object as Object
 import Foreign.Object.ST (STObject)
 import Halogen.VDom as V
+import Halogen.VDom.Hydrate (quoteText)
 import Halogen.VDom.Machine (Step'(..), Step, mkStep)
 import Halogen.VDom.Types (Namespace(..))
+import Halogen.VDom.Util (JsSet)
 import Halogen.VDom.Util as Util
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Element (Element) as DOM
@@ -94,6 +98,51 @@ buildProp emit el = renderProp
         }
     pure $ mkStep $ Step unit state patchProp haltProp
 
+checkEmptyAttributeSet :: JsSet String -> Effect Unit
+checkEmptyAttributeSet attributeSet = do
+  unless (Util.isEmptyAttributeSet attributeSet) do
+    EEx.throwException 
+      $ EEx.error 
+      $ "Expected element to have the attributes "
+        <> Util.toStringAttributeSet attributeSet
+        <> ", but they were not found"
+
+-- | A `Machine` for reconciling attributes, properties, and event handlers.
+-- | An emitter effect must be provided to respond to events. For example,
+-- | to allow arbitrary effects in event handlers, one could use `id`.
+-- |
+-- | Reconciliation combines applying attributes, properties, and event
+-- | handlers with verifying the consistency of attributes and properties
+-- | during the hydration pass. As such, `renderProp` and `applyProp` must
+-- | be implemented accordingly.
+hydrateProp 
+  ∷ ∀ a
+  . (a → Effect Unit)
+  → DOM.Element
+  → V.Machine (Array (Prop a)) Unit
+hydrateProp emit el = renderProp
+  where
+  renderProp = EFn.mkEffectFn1 \ps1 -> do
+    events <- Util.newMutMap
+    let 
+      attributeSet :: JsSet String
+      attributeSet = Util.getAttributeSet el 
+    props <- 
+      EFn.runEffectFn3 Util.strMapWithIxE 
+        ps1 
+        propToStrKey 
+        (Fn.runFn4 hydrateApplyProp attributeSet el emit events)
+    checkEmptyAttributeSet attributeSet
+    let
+      state :: PropState a
+      state =
+        { events: Util.unsafeFreeze events
+        , props
+        , el
+        , emit
+        }
+    pure $ mkStep $ Step unit state patchProp haltProp
+
 patchProp ::
   ∀ a
   . EFn.EffectFn2
@@ -145,6 +194,101 @@ applyProp = Fn.mkFn3 \el emit events -> EFn.mkEffectFn3 \_ _ v →
       pure v
     Property prop val → do
       EFn.runEffectFn3 setProperty prop val el
+      pure v
+    Handler ty f → do
+      EFn.runEffectFn5 setHandler el emit events ty f
+      pure v
+    Ref f → do
+      EFn.runEffectFn2 mbEmit emit (f (Created el))
+      pure v
+
+checkHasAttribute :: Maybe Namespace -> String -> String -> DOM.Element -> Effect Unit
+checkHasAttribute maybeNamespace attributeName expectedValue element = do
+  mActualValue <- toMaybe <$> 
+    EFn.runEffectFn3 Util.getAttribute 
+      (toNullable maybeNamespace) 
+      attributeName 
+      element
+  case mActualValue of
+    Nothing ->
+      EEx.throwException 
+        $ EEx.error 
+        $ "Expected element to have an attribute " 
+          <> quoteText (Util.fullAttributeName maybeNamespace attributeName)
+          <> " with value " 
+          <> quoteText expectedValue 
+          <> ", but it is missing"
+    Just actualValue ->
+      unless (actualValue == expectedValue) do
+        EEx.throwException 
+          $ EEx.error 
+          $ "Expected element to have an attribute " 
+            <> quoteText (Util.fullAttributeName maybeNamespace attributeName)
+            <> " with value " 
+            <> quoteText expectedValue 
+            <> ", but it was equal to "
+            <> quoteText actualValue
+
+checkHasProp :: EFn.EffectFn3 String PropValue DOM.Element Unit
+checkHasProp = EFn.mkEffectFn3 \propName expectedValue element -> do
+  let
+    actualValue :: PropValue
+    actualValue = Fn.runFn2 unsafeGetProperty propName element
+  unless (Fn.runFn2 Util.refEq actualValue expectedValue) do
+    EEx.throwException 
+      $ EEx.error 
+      $ "Expected element to have a property "
+        <> quoteText propName
+        <> " with value "
+        <> quoteText (Util.unsafeString expectedValue)
+        <> ", but it was equal to "
+        <> quoteText (Util.unsafeString actualValue)
+
+checkHasPropDelete :: EFn.EffectFn5 (JsSet String) String PropValue DOM.Element String Unit
+checkHasPropDelete = EFn.mkEffectFn5 \attributeSet propName expectedValue element attributeName -> do
+  EFn.runEffectFn3 checkHasProp propName expectedValue element
+  EFn.runEffectFn2 Util.deleteAttributeSet attributeSet attributeName
+
+hydrateApplyProp
+  ∷ ∀ r a
+  . Fn.Fn4
+    (JsSet String)
+    DOM.Element
+    (a → Effect Unit)
+    (STObject r (EventListenerAndCurrentEmitterInputBuilder a))
+    (EFn.EffectFn3 String Int (Prop a) (Prop a))
+hydrateApplyProp = Fn.mkFn4 \attributeSet el emit events -> EFn.mkEffectFn3 \_ _ v ->
+  case v of
+    Attribute maybeNamespace attributeName attributeValue → do
+      checkHasAttribute maybeNamespace attributeName attributeValue el
+      let
+        fullAttributeName :: String 
+        fullAttributeName = Util.fullAttributeName maybeNamespace attributeName
+      EFn.runEffectFn2 Util.deleteAttributeSet attributeSet fullAttributeName
+      pure v
+    Property propName propValue → do
+      case propName of
+        -- We need to check the attribute rather than the property since
+        -- the property contains the hostname, rather than just the value.
+        "href" -> do
+          checkHasAttribute Nothing "href" (Util.unsafeString propValue) el
+          EFn.runEffectFn2 Util.deleteAttributeSet attributeSet "href"
+        -- See: https://github.com/elm/virtual-dom/blob/5a5bcf48720bc7d53461b3cd42a9f19f119c5503/src/Elm/Kernel/VirtualDom.server.js#L196-L201
+        "className" ->
+          EFn.runEffectFn5 checkHasPropDelete attributeSet propName propValue el "class"
+        "htmlFor" ->
+          EFn.runEffectFn5 checkHasPropDelete attributeSet propName propValue el "for"
+        "httpEquiv" ->
+          EFn.runEffectFn5 checkHasPropDelete attributeSet propName propValue el "http-equiv"
+        "acceptCharset" ->
+          EFn.runEffectFn5 checkHasPropDelete attributeSet propName propValue el "accept-charset"
+        _ -> do
+          EFn.runEffectFn3 checkHasProp propName propValue el
+          -- If a property value is a boolean and is false, the property should
+          -- not be rendered at all as the presence of the attribute implies a
+          -- truthy value.
+          unless (Util.unsafeIsBooleanFalse propValue) do
+            EFn.runEffectFn2 Util.deleteAttributeSet attributeSet $ String.toLower propName
       pure v
     Handler ty f → do
       EFn.runEffectFn5 setHandler el emit events ty f
