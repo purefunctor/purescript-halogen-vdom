@@ -7,6 +7,8 @@ module Halogen.VDom.DOM
   , buildWidget
   , VDomHydrationSpec(..)
   , hydrateVDom
+  , hydrateText
+  , hydrateElem
   ) where
 
 import Prelude
