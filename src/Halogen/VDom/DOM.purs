@@ -5,6 +5,8 @@ module Halogen.VDom.DOM
   , buildElem
   , buildKeyed
   , buildWidget
+  , VDomHydrationSpec(..)
+  , hydrateVDom
   ) where
 
 import Prelude
@@ -20,6 +22,7 @@ import Halogen.VDom.Machine (Machine, Step, Step'(..), extract, halt, mkStep, st
 import Halogen.VDom.Machine as Machine
 import Halogen.VDom.Types (ElemName(..), Namespace(..), VDom(..), runGraft)
 import Halogen.VDom.Util as Util
+import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Document (Document) as DOM
 import Web.DOM.Element (Element) as DOM
 import Web.DOM.Element as DOMElement
@@ -43,6 +46,17 @@ newtype VDomSpec a w = VDomSpec
   , document ∷ DOM.Document
   }
 
+-- | A `VDomSpec` specialized for hydration.
+-- |
+-- | This adds the following functions:
+-- | * `hydrateWidget`, analogous to `buildWidget`.
+-- | * `hydrateAttributes`, analogous to `buildAttributes`.
+newtype VDomHydrationSpec a w = VDomHydrationSpec
+  { vdomSpec ∷ VDomSpec a w
+  , hydrateWidget ∷ VDomHydrationSpec a w → DOM.Node → Machine w DOM.Node
+  , hydrateAttributes ∷ DOM.Element → Machine a Unit
+  }
+
 -- | Starts an initial `VDom` machine by providing a `VDomSpec`.
 -- |
 -- | ```purescript
@@ -61,6 +75,31 @@ buildVDom spec = build
     Keyed ns n a ch → EFn.runEffectFn6 buildKeyed spec build ns n a ch
     Widget w → EFn.runEffectFn3 buildWidget spec build w
     Grafted g → EFn.runEffectFn1 build (runGraft g)
+
+-- | Starts an initial `VDom` machine for hydration by providing a
+-- | `VDomHydrationSpec` and an initial `Node`.
+-- |
+-- | The initial `Node` is usually the first child of the container
+-- | being hydrated.
+-- |
+-- | ```purescript
+-- | main = do
+-- |   machine1 ← buildVDom spec initialNode vdomTree1
+-- |   machine2 ← Machine.step machine1 vdomTree2
+-- |   machine3 ← Machine.step machine2 vdomTree3
+-- |   ...
+-- | ```
+hydrateVDom ∷ ∀ a w. VDomHydrationSpec a w → DOM.Node → VDomMachine a w
+hydrateVDom _ = hydrate 
+  where
+  hydrate :: DOM.Node -> VDomMachine a w
+  hydrate _ = EFn.mkEffectFn1 \vdom ->
+    case vdom of
+      Text _ -> unsafeCoerce unit
+      Elem _ _ _ _ -> unsafeCoerce unit
+      Keyed _ _ _ _ -> unsafeCoerce unit
+      Widget _ -> unsafeCoerce unit
+      Grafted _ -> unsafeCoerce unit
 
 type TextState a w =
   { build ∷ VDomMachine a w
