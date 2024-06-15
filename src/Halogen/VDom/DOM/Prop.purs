@@ -122,6 +122,7 @@ hydrateProp
   → V.Machine (Array (Prop a)) Unit
 hydrateProp emit el = renderProp
   where
+  renderProp ∷ EFn.EffectFn1 (Array (Prop a)) (Step (Array (Prop a)) Unit)
   renderProp = EFn.mkEffectFn1 \ps1 -> do
     events <- Util.newMutMap
     let 
