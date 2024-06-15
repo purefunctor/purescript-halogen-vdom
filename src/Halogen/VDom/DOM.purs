@@ -21,6 +21,7 @@ import Data.Maybe (Maybe(..))
 import Data.Nullable (toNullable)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), fst)
+import Data.Tuple as Tuple
 import Effect (Effect)
 import Effect.Uncurried as EFn
 import Foreign.Object as Object
@@ -114,7 +115,7 @@ hydrateVDom hydrationSpec@(VDomHydrationSpec { vdomSpec }) = hydrate
     case vdom of
       Text s -> EFn.runEffectFn5 hydrateText currentNode hydrationSpec hydrate build s
       Elem ns n a ch -> EFn.runEffectFn8 hydrateElem currentNode hydrationSpec hydrate build ns n a ch
-      Keyed _ _ _ _ -> unsafeCoerce unit
+      Keyed ns n a ch -> EFn.runEffectFn8 hydrateKeyed currentNode hydrationSpec hydrate build ns n a ch
       Widget _ -> unsafeCoerce unit
       Grafted g -> EFn.runEffectFn1 (hydrate currentNode) (runGraft g)
 
@@ -220,7 +221,7 @@ hydrateElem = EFn.mkEffectFn8 \currentNode (VDomHydrationSpec { vdomSpec: VDomSp
       vdomChildren
 
   let
-    onChild :: { node :: DOM.Node, vdom :: VDom a w } -> Effect (Step (VDom a w) DOM.Node)
+    onChild :: { node :: DOM.Node, vdom :: VDom a w } -> Effect (VDomStep a w)
     onChild { node, vdom } = EFn.runEffectFn1 (hydrate node) vdom
 
   children <- traverse onChild $ Array.fromFoldable zippedChildren
@@ -324,6 +325,58 @@ buildKeyed = EFn.mkEffectFn6 \(VDomSpec spec) build ns1 name1 as1 ch1 → do
       , length: Array.length ch1
       }
   pure $ mkStep $ Step node state patchKeyed haltKeyed
+
+hydrateKeyed :: forall a w. VDomHydrator4 (Maybe Namespace) ElemName a (Array (Tuple String (VDom a w))) a w
+hydrateKeyed = EFn.mkEffectFn8 \currentNode (VDomHydrationSpec { vdomSpec: VDomSpec { document }, hydrateAttributes }) hydrate build ns1 name1 as1 ch1 -> do
+  currentElement <- Hydrate.checkIsElementNode currentNode
+  Hydrate.checkTagNameIsEqualTo ns1 name1 currentElement
+
+  currentElementChildren <- do
+    nodeList <- DOM.Node.childNodes currentNode
+    nodeArray <- DOM.NodeList.toArray nodeList
+    pure $ Hydrate.listToElementOrTextNode $ List.fromFoldable nodeArray
+
+  let
+    toOutput :: ElementOrTextNode -> Tuple String (VDom a w) -> { node :: DOM.Node, vdom :: VDom a w, key :: String }
+    toOutput node (Tuple key vdom) = { node: Hydrate.elementOrTextNodeToNode node, vdom, key }
+
+    extractVdom :: Tuple String (VDom a w) -> VDom a w
+    extractVdom = Tuple.snd
+
+    vdomChildren :: List (Tuple String (VDom a w))
+    vdomChildren = List.fromFoldable ch1
+
+  zippedChildren <- 
+    EFn.runEffectFn6 Hydrate.zipChildrenAndSplitTextNodes
+      toOutput
+      extractVdom
+      document
+      currentNode
+      currentElementChildren
+      vdomChildren
+
+  let
+    extractKey :: { node :: DOM.Node, vdom :: VDom a w, key :: String } -> String
+    extractKey { key } = key
+
+    onChild :: EFn.EffectFn3 String Int { node :: DOM.Node, vdom :: VDom a w, key :: String } (VDomStep a w)
+    onChild = EFn.mkEffectFn3 \_ _ { node, vdom } -> EFn.runEffectFn1 (hydrate node) vdom
+
+  children <- EFn.runEffectFn3 Util.strMapWithIxE (Array.fromFoldable zippedChildren) extractKey onChild
+  attrs <- EFn.runEffectFn1 (hydrateAttributes currentElement) as1
+
+  let
+    state =
+      { build
+      , node: currentNode
+      , attrs
+      , ns: ns1
+      , name: name1
+      , children
+      , length: Array.length ch1
+      }
+
+  pure $ mkStep $ Step currentNode state patchKeyed haltKeyed 
 
 patchKeyed ∷ ∀ a w. EFn.EffectFn2 (KeyedState a w) (VDom a w) (VDomStep a w)
 patchKeyed = EFn.mkEffectFn2 \state vdom → do
