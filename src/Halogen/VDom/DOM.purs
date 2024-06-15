@@ -11,6 +11,7 @@ module Halogen.VDom.DOM
   , hydrateElem
   , hydrateKeyed
   , hydrateWidget
+  , VDomMachine
   ) where
 
 import Prelude
