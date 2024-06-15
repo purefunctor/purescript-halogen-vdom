@@ -9,6 +9,8 @@ module Halogen.VDom.DOM
   , hydrateVDom
   , hydrateText
   , hydrateElem
+  , hydrateKeyed
+  , hydrateWidget
   ) where
 
 import Prelude
@@ -31,7 +33,6 @@ import Halogen.VDom.Machine (Machine, Step, Step'(..), extract, halt, mkStep, st
 import Halogen.VDom.Machine as Machine
 import Halogen.VDom.Types (ElemName(..), Namespace(..), VDom(..), runGraft)
 import Halogen.VDom.Util as Util
-import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.Document (Document) as DOM
 import Web.DOM.Element (Element) as DOM
 import Web.DOM.Element as DOMElement
@@ -116,7 +117,7 @@ hydrateVDom hydrationSpec@(VDomHydrationSpec { vdomSpec }) = hydrate
       Text s -> EFn.runEffectFn5 hydrateText currentNode hydrationSpec hydrate build s
       Elem ns n a ch -> EFn.runEffectFn8 hydrateElem currentNode hydrationSpec hydrate build ns n a ch
       Keyed ns n a ch -> EFn.runEffectFn8 hydrateKeyed currentNode hydrationSpec hydrate build ns n a ch
-      Widget _ -> unsafeCoerce unit
+      Widget w -> EFn.runEffectFn5 hydrateWidget currentNode hydrationSpec hydrate build w
       Grafted g -> EFn.runEffectFn1 (hydrate currentNode) (runGraft g)
 
 type TextState a w =
@@ -444,6 +445,15 @@ buildWidget = EFn.mkEffectFn3 \(VDomSpec spec) build w → do
   res ← EFn.runEffectFn1 (spec.buildWidget (VDomSpec spec)) w
   let
     res' = res # unStep \(Step n _ _ _) →
+      mkStep $ Step n { build, widget: res } patchWidget haltWidget
+  pure res'
+
+hydrateWidget :: forall a w. VDomHydrator w a w
+hydrateWidget = EFn.mkEffectFn5 \currentNode hydrationSpec@(VDomHydrationSpec { hydrateWidget: hydrateWidgetInternal }) _ build w -> do
+  res <- EFn.runEffectFn1 (hydrateWidgetInternal hydrationSpec currentNode) w
+  let
+    res' :: VDomStep a w
+    res' = res # unStep \(Step n _ _ _) ->
       mkStep $ Step n { build, widget: res } patchWidget haltWidget
   pure res'
 
