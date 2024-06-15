@@ -116,7 +116,7 @@ hydrateVDom hydrationSpec@(VDomHydrationSpec { vdomSpec }) = hydrate
       Elem ns n a ch -> EFn.runEffectFn8 hydrateElem currentNode hydrationSpec hydrate build ns n a ch
       Keyed _ _ _ _ -> unsafeCoerce unit
       Widget _ -> unsafeCoerce unit
-      Grafted _ -> unsafeCoerce unit
+      Grafted g -> EFn.runEffectFn1 (hydrate currentNode) (runGraft g)
 
 type TextState a w =
   { build ∷ VDomMachine a w
