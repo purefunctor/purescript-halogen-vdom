@@ -146,22 +146,33 @@ applyProp = Fn.mkFn3 \el emit events -> EFn.mkEffectFn3 \_ _ v →
     Property prop val → do
       EFn.runEffectFn3 setProperty prop val el
       pure v
-    Handler (DOM.EventType ty) f → do
-      case Fn.runFn2 Util.unsafeGetAny ty events of
-        handler | Fn.runFn2 Util.unsafeHasAny ty events → do
-          Ref.write f (snd handler)
-          pure v
-        _ → do
-          ref ← Ref.new f
-          listener ← DOM.eventListener \ev → do
-            f' ← Ref.read ref
-            EFn.runEffectFn2 mbEmit emit (f' ev)
-          EFn.runEffectFn3 Util.pokeMutMap ty (Tuple listener ref) events
-          EFn.runEffectFn3 Util.addEventListener ty listener el
-          pure v
+    Handler ty f → do
+      EFn.runEffectFn5 setHandler el emit events ty f
+      pure v
     Ref f → do
       EFn.runEffectFn2 mbEmit emit (f (Created el))
       pure v
+
+setHandler
+  ∷ ∀ r a
+  . EFn.EffectFn5
+    DOM.Element
+    (a -> Effect Unit)
+    (STObject r (EventListenerAndCurrentEmitterInputBuilder a))
+    DOM.EventType
+    (DOM.Event -> Maybe a)
+    Unit
+setHandler = EFn.mkEffectFn5 \el emit events (DOM.EventType ty) f →
+  case Fn.runFn2 Util.unsafeGetAny ty events of
+    handler | Fn.runFn2 Util.unsafeHasAny ty events → do
+      Ref.write f (snd handler)
+    _ → do
+      ref ← Ref.new f
+      listener ← DOM.eventListener \ev → do
+        f' ← Ref.read ref
+        EFn.runEffectFn2 mbEmit emit (f' ev)
+      EFn.runEffectFn3 Util.pokeMutMap ty (Tuple listener ref) events
+      EFn.runEffectFn3 Util.addEventListener ty listener el
 
 diffProp
   ∷ ∀ r a
