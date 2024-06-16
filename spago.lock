@@ -70,6 +70,79 @@ workspace:
         - web-file
         - web-html
         - web-storage
+    halogen-vdom-test-hydration:
+      path: test-hydration
+      dependencies:
+        - halogen-vdom
+        - halogen-vdom-string-renderer
+      test_dependencies:
+        - spec
+      build_plan:
+        - aff
+        - ansi
+        - arrays
+        - avar
+        - bifunctors
+        - catenable-lists
+        - console
+        - const
+        - contravariant
+        - control
+        - datetime
+        - distributive
+        - effect
+        - either
+        - enums
+        - exceptions
+        - exists
+        - foldable-traversable
+        - foreign
+        - foreign-object
+        - fork
+        - free
+        - functions
+        - functors
+        - gen
+        - halogen-vdom
+        - halogen-vdom-string-renderer
+        - identity
+        - integers
+        - invariant
+        - js-date
+        - lazy
+        - lists
+        - maybe
+        - media-types
+        - mmorph
+        - newtype
+        - nonempty
+        - now
+        - nullable
+        - numbers
+        - ordered-collections
+        - orders
+        - parallel
+        - partial
+        - pipes
+        - prelude
+        - profunctor
+        - refs
+        - safe-coerce
+        - spec
+        - st
+        - strings
+        - tailrec
+        - transformers
+        - tuples
+        - type-equality
+        - typelevel-prelude
+        - unfoldable
+        - unsafe-coerce
+        - web-dom
+        - web-events
+        - web-file
+        - web-html
+        - web-storage
   package_set:
     address:
       registry: 51.2.0
@@ -568,6 +641,36 @@ workspace:
       zipperarray: 2.0.0
   extra_packages: {}
 packages:
+  aff:
+    type: registry
+    version: 7.1.0
+    integrity: sha256-7hOC6uQO9XBAI5FD8F33ChLjFAiZVfd4BJMqlMh7TNU=
+    dependencies:
+      - arrays
+      - bifunctors
+      - control
+      - datetime
+      - effect
+      - either
+      - exceptions
+      - foldable-traversable
+      - functions
+      - maybe
+      - newtype
+      - parallel
+      - prelude
+      - refs
+      - tailrec
+      - transformers
+      - unsafe-coerce
+  ansi:
+    type: registry
+    version: 7.0.0
+    integrity: sha256-ZMB6HD+q9CXvn9fRCmJ8dvuDrOVHcjombL3oNOerVnE=
+    dependencies:
+      - foldable-traversable
+      - lists
+      - strings
   arrays:
     type: registry
     version: 7.3.0
@@ -587,6 +690,17 @@ packages:
       - tuples
       - unfoldable
       - unsafe-coerce
+  avar:
+    type: registry
+    version: 5.0.0
+    integrity: sha256-e7hf0x4hEpcygXP0LtvfvAQ49Bbj2aWtZT3gqM///0A=
+    dependencies:
+      - aff
+      - effect
+      - either
+      - exceptions
+      - functions
+      - maybe
   bifunctors:
     type: registry
     version: 6.0.0
@@ -597,6 +711,18 @@ packages:
       - newtype
       - prelude
       - tuples
+  catenable-lists:
+    type: registry
+    version: 7.0.0
+    integrity: sha256-76vYENhwF4BWTBsjeLuErCH2jqVT4M3R1HX+4RwSftA=
+    dependencies:
+      - control
+      - foldable-traversable
+      - lists
+      - maybe
+      - prelude
+      - tuples
+      - unfoldable
   console:
     type: registry
     version: 6.1.0
@@ -752,6 +878,31 @@ packages:
       - tuples
       - typelevel-prelude
       - unfoldable
+  fork:
+    type: registry
+    version: 6.0.0
+    integrity: sha256-X7u0SuCvFbLbzuNEKLBNuWjmcroqMqit4xEzpQwAP7E=
+    dependencies:
+      - aff
+  free:
+    type: registry
+    version: 7.1.0
+    integrity: sha256-JAumgEsGSzJCNLD8AaFvuX7CpqS5yruCngi6yI7+V5k=
+    dependencies:
+      - catenable-lists
+      - control
+      - distributive
+      - either
+      - exists
+      - foldable-traversable
+      - invariant
+      - lazy
+      - maybe
+      - prelude
+      - tailrec
+      - transformers
+      - tuples
+      - unsafe-coerce
   functions:
     type: registry
     version: 6.0.0
@@ -791,6 +942,15 @@ packages:
       - tailrec
       - tuples
       - unfoldable
+  halogen-vdom-string-renderer:
+    type: registry
+    version: 0.5.0
+    integrity: sha256-8Qxv5Ib/4ETvIa5C2WG9j39Yosc57ZOpKw5qyvGqgno=
+    dependencies:
+      - foreign
+      - halogen-vdom
+      - ordered-collections
+      - prelude
   identity:
     type: registry
     version: 6.0.0
@@ -868,6 +1028,14 @@ packages:
     dependencies:
       - newtype
       - prelude
+  mmorph:
+    type: registry
+    version: 7.0.0
+    integrity: sha256-urZlZNNqGeQFe5D/ClHlR8QgGBNHTMFPtJ5S5IpflTQ=
+    dependencies:
+      - free
+      - functors
+      - transformers
   newtype:
     type: registry
     version: 5.0.0
@@ -931,11 +1099,39 @@ packages:
     dependencies:
       - newtype
       - prelude
+  parallel:
+    type: registry
+    version: 7.0.0
+    integrity: sha256-gUC9i4Txnx9K9RcMLsjujbwZz6BB1bnE2MLvw4GIw5o=
+    dependencies:
+      - control
+      - effect
+      - either
+      - foldable-traversable
+      - functors
+      - maybe
+      - newtype
+      - prelude
+      - profunctor
+      - refs
+      - transformers
   partial:
     type: registry
     version: 4.0.0
     integrity: sha256-fwXerld6Xw1VkReh8yeQsdtLVrjfGiVuC5bA1Wyo/J4=
     dependencies: []
+  pipes:
+    type: registry
+    version: 8.0.0
+    integrity: sha256-kvfqGM4cPA/wCcBHbp5psouFw5dZGvku2462x7ZBwSY=
+    dependencies:
+      - aff
+      - lists
+      - mmorph
+      - prelude
+      - tailrec
+      - transformers
+      - tuples
   prelude:
     type: registry
     version: 6.0.1
@@ -967,6 +1163,38 @@ packages:
     integrity: sha256-a1ibQkiUcbODbLE/WAq7Ttbbh9ex+x33VCQ7GngKudU=
     dependencies:
       - unsafe-coerce
+  spec:
+    type: registry
+    version: 7.6.0
+    integrity: sha256-+merGdQbL9zWONbnt8S8J9afGJ59MQqGtS0qSd3yu4I=
+    dependencies:
+      - aff
+      - ansi
+      - arrays
+      - avar
+      - bifunctors
+      - control
+      - datetime
+      - effect
+      - either
+      - exceptions
+      - foldable-traversable
+      - fork
+      - identity
+      - integers
+      - lists
+      - maybe
+      - newtype
+      - now
+      - ordered-collections
+      - parallel
+      - pipes
+      - prelude
+      - refs
+      - strings
+      - tailrec
+      - transformers
+      - tuples
   st:
     type: registry
     version: 6.2.0
